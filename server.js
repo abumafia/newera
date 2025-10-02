@@ -320,6 +320,62 @@ app.post('/upload', requireLogin, upload.single('profilePic'), async (req, res) 
   }
 });
 
+// Story Schema
+const StorySchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  media: { type: String, required: true },
+  caption: { type: String, default: '' },
+  expiresAt: { type: Date, required: true },
+  viewers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Story = mongoose.model('Story', StorySchema);
+
+// Story yaratish
+app.post('/stories', requireLogin, upload.single('media'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Media fayl kerak' });
+    }
+    
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 soat
+    
+    const newStory = new Story({
+      userId: req.session.userId,
+      media: '/uploads/' + req.file.filename,
+      caption: req.body.caption || '',
+      expiresAt
+    });
+    
+    await newStory.save();
+    await newStory.populate('userId', 'username fullName profilePic');
+    
+    res.json({ success: true, story: newStory });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Follow qilingan userlarning storylarini olish
+app.get('/stories', requireLogin, async (req, res) => {
+  try {
+    const user = await User.findById(req.session.userId);
+    const followingIds = user.following;
+    
+    const stories = await Story.find({
+      userId: { $in: followingIds },
+      expiresAt: { $gt: new Date() }
+    })
+    .populate('userId', 'username fullName profilePic')
+    .sort({ createdAt: -1 });
+    
+    res.json({ success: true, stories });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Post yaratish
 app.post('/posts', requireLogin, async (req, res) => {
   try {
